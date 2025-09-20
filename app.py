@@ -1,14 +1,16 @@
 from flask import Flask, request, jsonify
 import requests
 import SignerPy
+import json
+import secrets
 import uuid
+import datetime
 import binascii
 import os
 import time
 import random
 import re
 from bs4 import BeautifulSoup
-import datetime
 
 app = Flask(__name__)
 
@@ -21,7 +23,7 @@ class TikTokEmailExtractor:
 
     def generate_params(self, email):
         xor_email = self.xor(email)
-        return {
+        params = {
             "request_tag_from": "h5",
             "fixed_mix_mode": "1",
             "mix_mode": "1",
@@ -29,12 +31,55 @@ class TikTokEmailExtractor:
             "scene": "1",
             "device_platform": "android",
             "os": "android",
+            "ssmix": "a",
+            "type": "3736",
             "_rticket": str(round(random.uniform(1.2, 1.6) * 100000000) * -1) + "4632",
             "cdid": str(uuid.uuid4()),
+            "channel": "googleplay",
+            "aid": "1233",
+            "app_name": "musical_ly",
+            "version_code": "370805",
+            "version_name": "37.8.5",
+            "manifest_version_code": "2023708050",
+            "update_version_code": "2023708050",
+            "ab_version": "37.8.5",
+            "resolution": "1600*900",
+            "dpi": "240",
+            "device_type": "SM-G998B",
+            "device_brand": "samsung",
+            "language": "en",
+            "os_api": "28",
+            "os_version": "9",
+            "ac": "wifi",
+            "is_pad": "0",
+            "current_region": "TW",
+            "app_type": "normal",
+            "sys_region": "US",
+            "last_install_time": "1754073240",
+            "mcc_mnc": "46692",
+            "timezone_name": "Asia/Baghdad",
+            "carrier_region_v2": "466",
+            "residence": "TW",
+            "app_language": "en",
+            "carrier_region": "TW",
+            "timezone_offset": "10800",
+            "host_abi": "arm64-v8a",
+            "locale": "en-GB",
+            "ac2": "wifi",
+            "uoo": "1",
+            "op_region": "TW",
+            "build_number": "37.8.5",
+            "region": "GB",
+            "ts": str(round(random.uniform(1.2, 1.6) * 100000000) * -1),
             "iid": str(random.randint(1, 10**19)),
             "device_id": str(random.randint(1, 10**19)),
-            "openudid": str(binascii.hexlify(os.urandom(8)).decode())
+            "openudid": str(binascii.hexlify(os.urandom(8)).decode()),
+            "support_webview": "1",
+            "okhttp_version": "4.2.210.6-tiktok",
+            "use_store_region_cookie": "1",
+            "app_version": "37.8.5"
         }
+        return params
 
     def get_temp_email(self):
         response = self.session.get("https://www.guerrillamail.com/ajax.php?f=get_email_address")
@@ -45,11 +90,12 @@ class TikTokEmailExtractor:
         self.session.cookies.update(self.cookies)
         return self.email_name
 
-    def get_passport_ticket(self, params):
+    def get_passport_ticket(self, email, params):
         signed = SignerPy.sign(params=params, cookie=self.cookies)
         headers = {
-            'User-Agent': "com.zhiliaoapp.musically/2023708050 (Linux; U; Android 9; en_GB; SM-G998B; Build/SP1A.210812.016;tt-ok/3.12.13.16)",
+            'User-Agent': "com.zhiliaoapp.musically/2023708050 (Linux; U; Android 9; en_GB; SM-G998B)",
             'x-ss-stub': signed['x-ss-stub'],
+            'x-tt-dm-status': "login=1;ct=1;rt=1",
             'x-ss-req-ticket': signed['x-ss-req-ticket'],
             'x-ladon': signed['x-ladon'],
             'x-khronos': signed['x-khronos'],
@@ -66,7 +112,7 @@ class TikTokEmailExtractor:
         params.update({"not_login_ticket": passport_ticket, "email": self.xor(self.email_name)})
         signed = SignerPy.sign(params=params, cookie=self.cookies)
         headers = {
-            'User-Agent': "com.zhiliaoapp.musically/2023708050 (Linux; U; Android 9; en_GB; SM-G998B; Build/SP1A.210812.016;tt-ok/3.12.13.16)",
+            'User-Agent': "com.zhiliaoapp.musically/2023708050 (Linux; U; Android 9)",
             'Accept-Encoding': "gzip",
             'x-ss-stub': signed['x-ss-stub'],
             'x-ss-req-ticket': signed['x-ss-req-ticket'],
@@ -100,78 +146,28 @@ class TikTokEmailExtractor:
                         return match.group(1)
             time.sleep(5)
 
-    # تعديل fetch_user_info ليعطي ريسبونس كامل
-    def fetch_user_info(self, username):
+    def fetch_user_info(self, username, original_email):
         headers = {
-            "user-agent": "Mozilla/5.0 (Linux; Android 8.0.0; Plume L2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.88 Mobile Safari/537.36"
+            "user-agent": "Mozilla/5.0 (Linux; Android 8.0.0)"
         }
         res = requests.get(f"https://www.tiktok.com/@{username}", headers=headers).text
         try:
             part = res.split('webapp.user-detail"')[1].split('"RecommendUserList"')[0]
-
-            user_id = part.split('id":"')[1].split('",')[0]
-            uniqueId = part.split('uniqueId":"')[1].split('",')[0]
-            nickname = part.split('nickname":"')[1].split('",')[0]
-            secUid = part.split('secUid":"')[1].split('",')[0]
-            signature = part.split('signature":"')[1].split('",')[0]
-
-            avatar_larger = re.search(r'"avatarLarger":"(.*?)"', part).group(1)
-            avatar_medium = re.search(r'"avatarMedium":"(.*?)"', part).group(1)
-            avatar_thumb = re.search(r'"avatarThumb":"(.*?)"', part).group(1)
-
-            createTime = int(part.split('createTime":')[1].split(',')[0])
-            createTimeReadable = datetime.datetime.fromtimestamp(createTime).strftime('%Y-%m-%d %H:%M:%S')
-
-            nickNameModifyTime = int(part.split('nickNameModifyTime":')[1].split(',')[0])
-            nickNameModifyTimeReadable = datetime.datetime.fromtimestamp(nickNameModifyTime).strftime('%Y-%m-%d %H:%M:%S')
-
-            verified = "true" in part.split('verified":')[1].split(',')[0].lower()
-            region = part.split('region":"')[1].split('",')[0]
-            country = part.split('country":"')[1].split('",')[0]
-            language = part.split('language":"')[1].split('",')[0]
-            privateAccount = "true" in part.split('privateAccount":')[1].split(',')[0].lower()
-            isOrganization = "true" in part.split('isOrganization":')[1].split(',')[0].lower()
-
-            stats = {
-                "followerCount": int(part.split('followerCount":')[1].split(',')[0]),
-                "followingCount": int(part.split('followingCount":')[1].split(',')[0]),
-                "heart": int(part.split('heart":')[1].split(',')[0]),
-                "heartCount": int(part.split('heartCount":')[1].split(',')[0]),
-                "videoCount": int(part.split('videoCount":')[1].split(',')[0]),
-                "diggCount": int(part.split('diggCount":')[1].split(',')[0]),
-                "friendCount": int(part.split('friendCount":')[1].split(',')[0])
+            user_info = {
+                "username": part.split('uniqueId":"')[1].split('",')[0],
+                "nickname": part.split('nickname":"')[1].split('",')[0],
+                "followers": part.split('followerCount":')[1].split(',')[0],
+                "following": part.split('followingCount":')[1].split(',')[0] if 'followingCount' in part else None,
+                "likes": part.split('heart":')[1].split(',')[0],
+                "region": part.split('region":"')[1].split('",')[0] if 'region' in part else None,
+                "verified": part.split('isVerified":')[1].split(',')[0] if 'isVerified' in part else None,
+                "private": part.split('secret":')[1].split(',')[0] if 'secret' in part else None,
+                "created_date": datetime.datetime.fromtimestamp(int(bin(int(part.split('id":"')[1].split('",')[0]))[2:31], 2)).strftime('%Y'),
+                "email": original_email
             }
-
-            return {
-                "user": {
-                    "id": user_id,
-                    "uniqueId": uniqueId,
-                    "nickname": nickname,
-                    "secUid": secUid,
-                    "signature": signature,
-                    "avatar": {
-                        "larger": avatar_larger,
-                        "medium": avatar_medium,
-                        "thumb": avatar_thumb
-                    },
-                    "createTime": createTime,
-                    "createTimeReadable": createTimeReadable,
-                    "nickNameModifyTime": nickNameModifyTime,
-                    "nickNameModifyTimeReadable": nickNameModifyTimeReadable,
-                    "verified": verified,
-                    "region": region,
-                    "country": country,
-                    "language": language,
-                    "privateAccount": privateAccount,
-                    "isOrganization": isOrganization
-                },
-                "stats": stats,
-                "statsV2": {k: str(v) for k, v in stats.items()},
-                "itemList": []
-            }
-
-        except Exception as e:
-            return {"error": f"Failed to fetch user info: {str(e)}"}
+            return user_info
+        except Exception:
+            return {"error": "Failed to fetch user info"}
 
 @app.route("/email-to-user", methods=["GET"])
 def email_to_user_api():
@@ -182,11 +178,10 @@ def email_to_user_api():
     extractor = TikTokEmailExtractor()
     extractor.get_temp_email()
     params = extractor.generate_params(email)
-    ticket = extractor.get_passport_ticket(params)
+    ticket = extractor.get_passport_ticket(email, params)
     extractor.send_email_code(params, ticket)
     username = extractor.wait_for_email()
-    user_info = extractor.fetch_user_info(username)
-    user_info["email"] = email
+    user_info = extractor.fetch_user_info(username, email)
     return jsonify(user_info)
 
 if __name__ == "__main__":
