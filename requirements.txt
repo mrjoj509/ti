@@ -1,5 +1,5 @@
-
-flask
+Flask
 requests
-aiohttp
+bs4
+beautifulsoup4
 SignerPy
