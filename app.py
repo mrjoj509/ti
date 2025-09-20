@@ -1,264 +1,193 @@
-import aiohttp, asyncio, uuid, random, os, secrets, re, requests
 from flask import Flask, request, jsonify
-
-try:
-    import SignerPy
-except ImportError:
-    os.system("pip install --upgrade pip")
-    os.system("pip install SignerPy")
-    import SignerPy
+import requests
+import SignerPy
+import uuid
+import binascii
+import os
+import time
+import random
+import re
+from bs4 import BeautifulSoup
+import datetime
 
 app = Flask(__name__)
 
-# البروكسي اللي انت حاطه
-proxy = "finmtozcdx303317:d3MU8i4MaJc2GF7P_country-UnitedStates@isp2.hydraproxy.com:9989"
-
-class Network:
+class TikTokEmailExtractor:
     def __init__(self):
-        global proxy
-        if proxy and "@" in proxy:
-            self.proxy = {
-                "http": "http://" + str(proxy),
-                "https": "http://" + str(proxy),   
-            }
-        else:
-            self.proxy = None
-        self.hosts = [
-            "api31-normal-useast2a.tiktokv.com",
-            "api22-normal-c-alisg.tiktokv.com",
-            "api2.musical.ly",
-            "api16-normal-useast5.tiktokv.us",
-            "api16-normal-no1a.tiktokv.eu",
-            "rc-verification-sg.tiktokv.com",
-            "api31-normal-alisg.tiktokv.com",
-            "api16-normal-c-useast1a.tiktokv.com",
-            "api22-normal-c-useast1a.tiktokv.com",
-            "api16-normal-c-useast1a.musical.ly",
-            "api19-normal-c-useast1a.musical.ly",
-            "api.tiktokv.com",
-            "www.tiktok.com",
-            "log2.musical.ly",
-            "webcast.musical.ly",
-            "inapp.tiktokv.com",
-            "api2-19-h2.musical.ly"
-        ]
-        self.send_hosts = [
-            "api22-normal-c-alisg.tiktokv.com",
-            "api31-normal-alisg.tiktokv.com",
-            "api22-normal-probe-useast2a.tiktokv.com",
-            "api16-normal-probe-useast2a.tiktokv.com",
-            "rc-verification-sg.tiktokv.com"
-        ]
-        self.params = {
-            'device_platform': 'android',
-            'ssmix': 'a',
-            'channel': 'googleplay',
-            'aid': '1233',
-            'app_name': 'musical_ly',
-            'version_code': '360505',
-            'version_name': '36.5.5',
-            'manifest_version_code': '2023605050',
-            'update_version_code': '2023605050',
-            'ab_version': '36.5.5',
-            'os_version': '10',
-            "device_id": 0,
-            'app_version': '30.1.2',
-            "request_from": "profile_card_v2",
-            "request_from_scene": '1',
-            "scene": "1",
-            "mix_mode": "1",
-            "os_api": "34",
-            "ac": "wifi",
+        self.session = requests.session()
+
+    def xor(self, string):
+        return "".join([hex(ord(c) ^ 5)[2:] for c in string])
+
+    def generate_params(self, email):
+        xor_email = self.xor(email)
+        return {
             "request_tag_from": "h5",
-        }        
-        self.headers = {
-            'User-Agent': f'com.zhiliaoapp.musically/2022703020 (Linux; U; Android 7.1.2; en; SM-N975F; Build/N2G48H;tt-ok/{str(random.randint(1, 10**19))})'
+            "fixed_mix_mode": "1",
+            "mix_mode": "1",
+            "account_param": xor_email,
+            "scene": "1",
+            "device_platform": "android",
+            "os": "android",
+            "_rticket": str(round(random.uniform(1.2, 1.6) * 100000000) * -1) + "4632",
+            "cdid": str(uuid.uuid4()),
+            "iid": str(random.randint(1, 10**19)),
+            "device_id": str(random.randint(1, 10**19)),
+            "openudid": str(binascii.hexlify(os.urandom(8)).decode())
         }
 
-class Email:
-    def __init__(self):
-        self.url = "https://api.mail.tm"
-        self.headers = {
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+    def get_temp_email(self):
+        response = self.session.get("https://www.guerrillamail.com/ajax.php?f=get_email_address")
+        data = response.json()
+        self.sid_token = data['sid_token']
+        self.email_name = data['email_addr']
+        self.cookies = {'PHPSESSID': self.sid_token}
+        self.session.cookies.update(self.cookies)
+        return self.email_name
+
+    def get_passport_ticket(self, params):
+        signed = SignerPy.sign(params=params, cookie=self.cookies)
+        headers = {
+            'User-Agent': "com.zhiliaoapp.musically/2023708050 (Linux; U; Android 9; en_GB; SM-G998B; Build/SP1A.210812.016;tt-ok/3.12.13.16)",
+            'x-ss-stub': signed['x-ss-stub'],
+            'x-ss-req-ticket': signed['x-ss-req-ticket'],
+            'x-ladon': signed['x-ladon'],
+            'x-khronos': signed['x-khronos'],
+            'x-argus': signed['x-argus'],
+            'x-gorgon': signed['x-gorgon'],
+            'content-type': "application/x-www-form-urlencoded",
+            'content-length': signed['content-length'],
         }
+        url = "https://api16-normal-c-alisg.tiktokv.com/passport/account_lookup/email/"
+        res = self.session.post(url, headers=headers, params=params, cookies=self.cookies)
+        return res.json()["data"]["accounts"][0]["passport_ticket"]
 
-    async def gen(self):
-        async with aiohttp.ClientSession(headers=self.headers) as session:
-            try:
-                async with session.get(f"{self.url}/domains") as resp:
-                    data = await resp.json()
-                    domain = data["hydra:member"][0]["domain"]
+    def send_email_code(self, params, passport_ticket):
+        params.update({"not_login_ticket": passport_ticket, "email": self.xor(self.email_name)})
+        signed = SignerPy.sign(params=params, cookie=self.cookies)
+        headers = {
+            'User-Agent': "com.zhiliaoapp.musically/2023708050 (Linux; U; Android 9; en_GB; SM-G998B; Build/SP1A.210812.016;tt-ok/3.12.13.16)",
+            'Accept-Encoding': "gzip",
+            'x-ss-stub': signed['x-ss-stub'],
+            'x-ss-req-ticket': signed['x-ss-req-ticket'],
+            'x-ladon': signed['x-ladon'],
+            'x-khronos': signed['x-khronos'],
+            'x-argus': signed['x-argus'],
+            'x-gorgon': signed['x-gorgon'],
+        }
+        url = "https://api16-normal-c-alisg.tiktokv.com/passport/email/send_code/"
+        self.session.post(url, headers=headers, params=params, cookies=self.cookies)
 
-                mail = ''.join(random.choice("qwertyuiopasdfghjklzxcvbnm") for _ in range(12)) + "@" + domain
-                payload = {"address": mail, "password": mail}
-                async with session.post(f"{self.url}/accounts", json=payload) as resp:
-                    await resp.json()
+    def wait_for_email(self):
+        last_email_id = None
+        while True:
+            url = "https://www.guerrillamail.com/ajax.php"
+            params = {'f': 'check_email', 'seq': '0'}
+            res = self.session.get(url, params=params, cookies=self.cookies)
+            emails = res.json().get('list', [])
+            if emails:
+                latest_email = emails[0]
+                if latest_email['mail_id'] != last_email_id:
+                    last_email_id = latest_email['mail_id']
+                    email_res = self.session.get(
+                        f"https://www.guerrillamail.com/ajax.php?f=fetch_email&email_id={last_email_id}",
+                        cookies=self.cookies
+                    )
+                    content = email_res.json().get('mail_body', '')
+                    soup = BeautifulSoup(content, 'html.parser')
+                    match = re.search(r'This email was generated for\s+([\w\.]+)\.', soup.get_text())
+                    if match:
+                        return match.group(1)
+            time.sleep(5)
 
-                async with session.post(f"{self.url}/token", json=payload) as resp:
-                    token = await resp.json()
-                    return mail, token.get("token")
-
-            except aiohttp.ContentTypeError:
-                return "O"
-            except Exception as e:
-                print(e)
-                return False, False
-
-    async def mailbox(self, token: str):
-        async with aiohttp.ClientSession(headers={**self.headers, "Authorization": f"Bearer {token}"}) as session:
-            while True:
-                await asyncio.sleep(5)
-                try:
-                    async with session.get(f"{self.url}/messages") as resp:
-                        inbox = await resp.json()
-                        messages = inbox.get("hydra:member", [])
-                        if messages:
-                            id = messages[0]["id"]
-                            async with session.get(f"{self.url}/messages/{id}") as r:
-                                msg = await r.json()
-                                return msg.get("text", "")
-                except aiohttp.ContentTypeError:
-                    await asyncio.sleep(5)
-                except Exception as e:
-                    print(e)
-                    return False
-
-class Email2User:
-    def __init__(self, email: str) -> None:
-        self.email = email
-        self.fake = None
-        self.session = requests.Session()
-        network = Network()
-        self.proxy = network.proxy
-        self.hosts = network.hosts
-        self.send_hosts = network.send_hosts
-        self.headers = network.headers.copy()
-        self.params = network.params.copy()
-        self.params = SignerPy.get(params=self.params)
-        self.params.update({
-            'device_type': f'rk{random.randint(3000, 4000)}s_{uuid.uuid4().hex[:4]}',
-            'language': 'AR'
-        })
-
-    async def fak(self):
-        for _ in range(5):
-            self.fake = await Email().gen()
-            if self.fake:
-                return self.fake
-
-    async def send_code(self):
-        self.ticket = None
-        
-        for host in self.hosts:
-            if self.proxy:
-                self.session.proxies.update(self.proxy)
-            self.params["account_param"] = self.email
-            signature = SignerPy.sign(params=self.params)
-            headers2 = self.headers.copy()
-            headers2.update({
-                'x-tt-passport-csrf-token': secrets.token_hex(16),
-                'x-ss-req-ticket': signature['x-ss-req-ticket'],
-                'x-ss-stub': signature['x-ss-stub'],
-                'x-argus': signature['x-argus'],
-                'x-gorgon': signature['x-gorgon'],
-                'x-khronos': signature['x-khronos'],
-                'x-ladon': signature['x-ladon'],
-            })
-            url = f'https://{host}/passport/account_lookup/email/'
-            try:
-                response = await asyncio.to_thread(self.session.post, url, params=self.params, headers=headers2, timeout=10)
-                self.ticket = response.json()['data']['accounts'][0]['passport_ticket']
-                if self.ticket:
-                    break 
-            except Exception as e:
-                print(e)
-                continue
-
-        if not self.ticket:
-            return False
-
-        for host in self.send_hosts:
-            if self.proxy:
-                self.session.proxies.update(self.proxy)
-            self.params["not_login_ticket"] = self.ticket
-            self.params["email"], self.token = self.fake
-            self.params["type"] = "3737"
-            self.params.pop("fixed_mix_mode", None)
-            self.params.pop("account_param", None)
-            signature = SignerPy.sign(params=self.params)
-            headers = self.headers.copy()
-            headers.update({
-                'x-ss-req-ticket': signature['x-ss-req-ticket'],
-                'x-ss-stub': signature['x-ss-stub'],
-                'x-argus': signature['x-argus'],
-                'x-gorgon': signature['x-gorgon'],
-                'x-khronos': signature['x-khronos'],
-                'x-ladon': signature['x-ladon'],
-            })
-            url = f"https://{host}/passport/email/send_code"
-            try:
-                response = await asyncio.to_thread(self.session.post, url, params=self.params, headers=headers, timeout=10)
-                if response.json().get("message") == "success":
-                    while True:
-                        username = await self.box()
-                        if username:
-                            return username
-                        await asyncio.sleep(2)
-            except Exception as e:
-                print(str(e))
-                continue
-
-        return False
-
-    async def box(self):
+    # تعديل fetch_user_info ليعطي ريسبونس كامل
+    def fetch_user_info(self, username):
+        headers = {
+            "user-agent": "Mozilla/5.0 (Linux; Android 8.0.0; Plume L2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.88 Mobile Safari/537.36"
+        }
+        res = requests.get(f"https://www.tiktok.com/@{username}", headers=headers).text
         try:
-            response = await Email().mailbox(self.token)
-            if response:
-                ree = re.search(r'تم إنشاء هذا البريد الإلكتروني من أجل\s+(.+)\.', response)
-                if ree:
-                    username = ree.group(1)                  
-                    return username
+            part = res.split('webapp.user-detail"')[1].split('"RecommendUserList"')[0]
+
+            user_id = part.split('id":"')[1].split('",')[0]
+            uniqueId = part.split('uniqueId":"')[1].split('",')[0]
+            nickname = part.split('nickname":"')[1].split('",')[0]
+            secUid = part.split('secUid":"')[1].split('",')[0]
+            signature = part.split('signature":"')[1].split('",')[0]
+
+            avatar_larger = re.search(r'"avatarLarger":"(.*?)"', part).group(1)
+            avatar_medium = re.search(r'"avatarMedium":"(.*?)"', part).group(1)
+            avatar_thumb = re.search(r'"avatarThumb":"(.*?)"', part).group(1)
+
+            createTime = int(part.split('createTime":')[1].split(',')[0])
+            createTimeReadable = datetime.datetime.fromtimestamp(createTime).strftime('%Y-%m-%d %H:%M:%S')
+
+            nickNameModifyTime = int(part.split('nickNameModifyTime":')[1].split(',')[0])
+            nickNameModifyTimeReadable = datetime.datetime.fromtimestamp(nickNameModifyTime).strftime('%Y-%m-%d %H:%M:%S')
+
+            verified = "true" in part.split('verified":')[1].split(',')[0].lower()
+            region = part.split('region":"')[1].split('",')[0]
+            country = part.split('country":"')[1].split('",')[0]
+            language = part.split('language":"')[1].split('",')[0]
+            privateAccount = "true" in part.split('privateAccount":')[1].split(',')[0].lower()
+            isOrganization = "true" in part.split('isOrganization":')[1].split(',')[0].lower()
+
+            stats = {
+                "followerCount": int(part.split('followerCount":')[1].split(',')[0]),
+                "followingCount": int(part.split('followingCount":')[1].split(',')[0]),
+                "heart": int(part.split('heart":')[1].split(',')[0]),
+                "heartCount": int(part.split('heartCount":')[1].split(',')[0]),
+                "videoCount": int(part.split('videoCount":')[1].split(',')[0]),
+                "diggCount": int(part.split('diggCount":')[1].split(',')[0]),
+                "friendCount": int(part.split('friendCount":')[1].split(',')[0])
+            }
+
+            return {
+                "user": {
+                    "id": user_id,
+                    "uniqueId": uniqueId,
+                    "nickname": nickname,
+                    "secUid": secUid,
+                    "signature": signature,
+                    "avatar": {
+                        "larger": avatar_larger,
+                        "medium": avatar_medium,
+                        "thumb": avatar_thumb
+                    },
+                    "createTime": createTime,
+                    "createTimeReadable": createTimeReadable,
+                    "nickNameModifyTime": nickNameModifyTime,
+                    "nickNameModifyTimeReadable": nickNameModifyTimeReadable,
+                    "verified": verified,
+                    "region": region,
+                    "country": country,
+                    "language": language,
+                    "privateAccount": privateAccount,
+                    "isOrganization": isOrganization
+                },
+                "stats": stats,
+                "statsV2": {k: str(v) for k, v in stats.items()},
+                "itemList": []
+            }
+
         except Exception as e:
-            print(e)
-            return None
+            return {"error": f"Failed to fetch user info: {str(e)}"}
 
-class Info:
-    def __init__(self, username: str) -> None:
-        self.email = username 
-        network = Network()
-        self.headers = network.headers.copy()
-        self.params = network.params.copy()
-
-    async def email2user(self):
-        api = Email2User(email=self.email)
-        for _ in range(5):
-            await api.fak()
-            if api.fake:
-                break
-        try:
-            self.username = await api.send_code()
-            return self.username
-        except Exception as e:
-            print(str(e))
-            return None
-
-# ================== Flask API ==================
-
-@app.route("/check-email", methods=["GET"])
-def check_email():
+@app.route("/email-to-user", methods=["GET"])
+def email_to_user_api():
     email = request.args.get("email")
     if not email:
         return jsonify({"error": "missing email"}), 400
 
-    try:
-        info = Info(email)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        username = loop.run_until_complete(info.email2user())
-        return jsonify({"email": email, "username": username})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    extractor = TikTokEmailExtractor()
+    extractor.get_temp_email()
+    params = extractor.generate_params(email)
+    ticket = extractor.get_passport_ticket(params)
+    extractor.send_email_code(params, ticket)
+    username = extractor.wait_for_email()
+    user_info = extractor.fetch_user_info(username)
+    user_info["email"] = email
+    return jsonify(user_info)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=5000)
