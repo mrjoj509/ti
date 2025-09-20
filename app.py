@@ -112,7 +112,7 @@ class TikTokEmailExtractor:
         params.update({"not_login_ticket": passport_ticket, "email": self.xor(self.email_name)})
         signed = SignerPy.sign(params=params, cookie=self.cookies)
         headers = {
-            'User-Agent': "com.zhiliaoapp.musically/2023708050 (Linux; U; Android 9)",
+            'User-Agent': "com.zhiliaoapp.musically/2023708050 (Linux; U; Android 9; en_GB; SM-G998B)",
             'Accept-Encoding': "gzip",
             'x-ss-stub': signed['x-ss-stub'],
             'x-ss-req-ticket': signed['x-ss-req-ticket'],
@@ -153,19 +153,23 @@ class TikTokEmailExtractor:
         res = requests.get(f"https://www.tiktok.com/@{username}", headers=headers).text
         try:
             part = res.split('webapp.user-detail"')[1].split('"RecommendUserList"')[0]
-            user_info = {
-                "username": part.split('uniqueId":"')[1].split('",')[0],
-                "nickname": part.split('nickname":"')[1].split('",')[0],
-                "followers": part.split('followerCount":')[1].split(',')[0],
-                "following": part.split('followingCount":')[1].split(',')[0] if 'followingCount' in part else None,
-                "likes": part.split('heart":')[1].split(',')[0],
-                "region": part.split('region":"')[1].split('",')[0] if 'region' in part else None,
-                "verified": part.split('isVerified":')[1].split(',')[0] if 'isVerified' in part else None,
-                "private": part.split('secret":')[1].split(',')[0] if 'secret' in part else None,
-                "created_date": datetime.datetime.fromtimestamp(int(bin(int(part.split('id":"')[1].split('",')[0]))[2:31], 2)).strftime('%Y'),
-                "email": original_email
+            id = part.split('id":"')[1].split('",')[0]
+            nickname = part.split('nickname":"')[1].split('",')[0]
+            followers = part.split('followerCount":')[1].split(',')[0]
+            likes = part.split('heart":')[1].split(',')[0]
+            region = part.split('region":"')[1].split('",')[0] if 'region":"' in part else ""
+            B = bin(int(id))[2:]
+            BS = B[:31]
+            Date = datetime.datetime.fromtimestamp(int(BS, 2)).strftime('%Y')
+            return {
+                "email": original_email,
+                "username": username,
+                "nickname": nickname,
+                "followers": followers,
+                "likes": likes,
+                "region": region,
+                "created_date": Date
             }
-            return user_info
         except Exception:
             return {"error": "Failed to fetch user info"}
 
