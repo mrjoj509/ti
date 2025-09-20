@@ -112,7 +112,7 @@ class TikTokEmailExtractor:
         params.update({"not_login_ticket": passport_ticket, "email": self.xor(self.email_name)})
         signed = SignerPy.sign(params=params, cookie=self.cookies)
         headers = {
-            'User-Agent': "com.zhiliaoapp.musically/2023708050 (Linux; U; Android 9; en_GB; SM-G998B)",
+            'User-Agent': "com.zhiliaoapp.musically/2023708050 (Linux; U; Android 9)",
             'Accept-Encoding': "gzip",
             'x-ss-stub': signed['x-ss-stub'],
             'x-ss-req-ticket': signed['x-ss-req-ticket'],
@@ -157,18 +157,19 @@ class TikTokEmailExtractor:
             nickname = part.split('nickname":"')[1].split('",')[0]
             followers = part.split('followerCount":')[1].split(',')[0]
             likes = part.split('heart":')[1].split(',')[0]
-            region = part.split('region":"')[1].split('",')[0] if 'region":"' in part else ""
             B = bin(int(id))[2:]
             BS = B[:31]
             Date = datetime.datetime.fromtimestamp(int(BS, 2)).strftime('%Y')
+            # ارجع كل البيانات مثل الريسبونس في ملف PHP
             return {
                 "email": original_email,
                 "username": username,
                 "nickname": nickname,
                 "followers": followers,
                 "likes": likes,
-                "region": region,
-                "created_date": Date
+                "created_date": Date,
+                "region": part.split('region":"')[1].split('"')[0] if 'region":"' in part else None,
+                "sec_uid": part.split('secUid":"')[1].split('"')[0] if 'secUid":"' in part else None
             }
         except Exception:
             return {"error": "Failed to fetch user info"}
@@ -189,4 +190,5 @@ def email_to_user_api():
     return jsonify(user_info)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
