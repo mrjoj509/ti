@@ -1,5 +1,5 @@
 Flask
 requests
-bs4
-beautifulsoup4
 SignerPy
+beautifulsoup4
+bs4
