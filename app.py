@@ -23,7 +23,8 @@ except ImportError:
 # ============================================
 class Network:
     def __init__(self):
-        self.proxy = None  # تم حذف البروكسي
+        # البروكسي
+        self.proxy = "http://finmtozcdx303317:d3MU8i4MaJc2GF7P_country-UnitedStates@isp2.hydraproxy.com:9989"
 
         self.hosts = [
             "api31-normal-useast2a.tiktokv.com",
@@ -131,6 +132,14 @@ class MobileFlowFlexible:
         self.input = account_param.strip()
         self.session = requests.Session()
         self.net = Network()
+        
+        # استخدام البروكسي للجلسة
+        if self.net.proxy:
+            self.session.proxies = {
+                "http": self.net.proxy,
+                "https": self.net.proxy
+            }
+
         self.base_params = self.net.params.copy()
         try:
             self.base_params = SignerPy.get(params=self.base_params)
@@ -354,7 +363,7 @@ def extract():
         tiktokinfo = None
         if username:
             try:
-                resp = requests.get(f"https://leakmrjoj.in/707/tik1.php?username={username}", timeout=10)
+                resp = requests.get(f"https://leakmrjoj.in/707/tik1.php?username={username}", timeout=10, proxies=flow.session.proxies)
                 tiktokinfo = resp.json()
             except:
                 tiktokinfo = {
