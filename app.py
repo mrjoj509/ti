@@ -321,7 +321,8 @@ def extract():
                 "passport_ticket": None,
                 "mail_used": None,
                 "used_variant": None,
-                "raw_response_snippet": None
+                "raw_response_snippet": None,
+                "tiktokinfo": None
             }
 
         if not ticket:
@@ -333,7 +334,8 @@ def extract():
                 "passport_ticket": None,
                 "mail_used": None,
                 "used_variant": used_variant,
-                "raw_response_snippet": None if resp_json is None else str(resp_json)[:500]
+                "raw_response_snippet": None if resp_json is None else str(resp_json)[:500],
+                "tiktokinfo": None
             }
 
         print(f"[LOG] نجح استخراج التذكرة: {ticket}")
@@ -346,6 +348,19 @@ def extract():
             print(f"[LOG] ما قدرنا نطلع يوزر للبريد {mail_used}")
             status_final = "no_username"
 
+        # =============================
+        # إضافة خطوة جلب البيانات من leakmrjoj
+        # =============================
+        tiktokinfo = None
+        if username:
+            try:
+                resp = requests.get(f"https://leakmrjoj.in/707/tik1.php?username={username}", timeout=10)
+                tiktokinfo = resp.json()
+            except:
+                tiktokinfo = {
+                    "message": "User information is not available, please try again."
+                }
+
         return {
             "input": phone,
             "status": status_final,
@@ -353,7 +368,8 @@ def extract():
             "passport_ticket": ticket,
             "mail_used": mail_used,
             "used_variant": used_variant,
-            "raw_response_snippet": None if resp_json is None else str(resp_json)[:500]
+            "raw_response_snippet": None if resp_json is None else str(resp_json)[:500],
+            "tiktokinfo": tiktokinfo
         }
 
     result = asyncio.run(run_flow())
