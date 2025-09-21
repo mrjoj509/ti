@@ -297,8 +297,8 @@ def extract():
     raw_phone = request.args.get("phone", "")
     timeout_mailbox = int(request.args.get("timeout_mailbox", "120"))
 
-    # فك الترميز وشيل المسافات
-    phone = unquote(raw_phone).strip()
+    # نصلح الرقم مباشرة: كل +/مسافات/ترميز نبدله بـ + حقيقي
+    phone = unquote(raw_phone).replace(" ", "").replace("%2B", "+").strip()
 
     if not phone.startswith("+"):
         print(f"[LOG] رفض الطلب: الرقم بدون + -> {phone}")
