@@ -307,19 +307,33 @@ def extract():
     print(f"[LOG] استعلام جديد برقم: {phone}")
 
     flow = MobileFlowFlexible(account_param=phone)
-    
+
     async def run_flow():
-        ticket, used_variant, resp_json = await flow.find_passport_ticket()
-        if not ticket:
-            print(f"[LOG] فشل استخراج التذكرة للرقم {phone}")
+        try:
+            ticket, used_variant, resp_json = await flow.find_passport_ticket()
+        except Exception as e:
+            print(f"[LOG] خطأ أثناء البحث عن passport_ticket: {e}")
             return {
                 "input": phone,
-                "status": "failed",
+                "status": "error",
+                "message": "خطأ أثناء الاتصال بـ TikTok API",
+                "username": None,
+                "passport_ticket": None,
+                "mail_used": None,
+                "used_variant": None,
+                "raw_response_snippet": None
+            }
+
+        if not ticket:
+            print(f"[LOG] الرقم {phone} ما عليه يوزر أو لا توجد تذكرة")
+            return {
+                "input": phone,
+                "status": "not_found",
                 "username": None,
                 "passport_ticket": None,
                 "mail_used": None,
                 "used_variant": used_variant,
-                "raw_response_snippet": resp_json
+                "raw_response_snippet": None if resp_json is None else str(resp_json)[:500]
             }
 
         print(f"[LOG] نجح استخراج التذكرة: {ticket}")
@@ -327,12 +341,14 @@ def extract():
 
         if username:
             print(f"[LOG] استخرجنا اليوزر: {username} باستخدام البريد {mail_used}")
+            status_final = "success"
         else:
             print(f"[LOG] ما قدرنا نطلع يوزر للبريد {mail_used}")
+            status_final = "no_username"
 
         return {
             "input": phone,
-            "status": "success" if username else "no_username",
+            "status": status_final,
             "username": username,
             "passport_ticket": ticket,
             "mail_used": mail_used,
