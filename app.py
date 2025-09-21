@@ -93,7 +93,7 @@ class TikTokEmailExtractor:
     def get_passport_ticket(self, email, params):
         signed = SignerPy.sign(params=params, cookie=self.cookies)
         headers = {
-            'User-Agent': "com.zhiliaoapp.musically/2023708050 (Linux; U; Android 9; en_GB; SM-G998B)",
+            'User-Agent': "com.zhiliaoapp.musically/2023708050 (Linux; U; Android 9; en_GB; SM-G998B; Build/SP1A.210812.016;tt-ok/3.12.13.16)",
             'x-ss-stub': signed['x-ss-stub'],
             'x-tt-dm-status': "login=1;ct=1;rt=1",
             'x-ss-req-ticket': signed['x-ss-req-ticket'],
@@ -102,7 +102,7 @@ class TikTokEmailExtractor:
             'x-argus': signed['x-argus'],
             'x-gorgon': signed['x-gorgon'],
             'content-type': "application/x-www-form-urlencoded",
-            'content-length': signed['content-length'],
+            'content-length': signed.get('content-length', '0'),
         }
         url = "https://api16-normal-c-alisg.tiktokv.com/passport/account_lookup/email/"
         res = self.session.post(url, headers=headers, params=params, cookies=self.cookies)
@@ -112,7 +112,7 @@ class TikTokEmailExtractor:
         params.update({"not_login_ticket": passport_ticket, "email": self.xor(self.email_name)})
         signed = SignerPy.sign(params=params, cookie=self.cookies)
         headers = {
-            'User-Agent': "com.zhiliaoapp.musically/2023708050 (Linux; U; Android 9)",
+            'User-Agent': "com.zhiliaoapp.musically/2023708050 (Linux; U; Android 9; en_GB; SM-G998B; Build/SP1A.210812.016;tt-ok/3.12.13.16)",
             'Accept-Encoding': "gzip",
             'x-ss-stub': signed['x-ss-stub'],
             'x-ss-req-ticket': signed['x-ss-req-ticket'],
@@ -148,7 +148,7 @@ class TikTokEmailExtractor:
 
     def fetch_user_info(self, username, original_email):
         headers = {
-            "user-agent": "Mozilla/5.0 (Linux; Android 8.0.0)"
+            "user-agent": "Mozilla/5.0 (Linux; Android 8.0.0; Plume L2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.88 Mobile Safari/537.36"
         }
         res = requests.get(f"https://www.tiktok.com/@{username}", headers=headers).text
         try:
@@ -160,16 +160,13 @@ class TikTokEmailExtractor:
             B = bin(int(id))[2:]
             BS = B[:31]
             Date = datetime.datetime.fromtimestamp(int(BS, 2)).strftime('%Y')
-            # ارجع كل البيانات مثل الريسبونس في ملف PHP
             return {
                 "email": original_email,
                 "username": username,
                 "nickname": nickname,
                 "followers": followers,
                 "likes": likes,
-                "created_date": Date,
-                "region": part.split('region":"')[1].split('"')[0] if 'region":"' in part else None,
-                "sec_uid": part.split('secUid":"')[1].split('"')[0] if 'secUid":"' in part else None
+                "created_date": Date
             }
         except Exception:
             return {"error": "Failed to fetch user info"}
@@ -190,5 +187,4 @@ def email_to_user_api():
     return jsonify(user_info)
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run()
