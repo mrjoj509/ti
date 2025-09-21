@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
-import asyncio
 import aiohttp
+import asyncio
 import uuid
 import random
 import os
@@ -17,10 +17,9 @@ except ImportError:
     os.system("pip install SignerPy")
     import SignerPy
 
-# بروكسي (اذا تحب تتركه فارغ "")
 proxy = "finmtozcdx303317:d3MU8i4MaJc2GF7P_country-UnitedStates@isp2.hydraproxy.com:9989"
 
-# ---- Network class ----
+# ===== Network =====
 class Network:
     def __init__(self):
         global proxy
@@ -82,7 +81,7 @@ class Network:
             'User-Agent': f'com.zhiliaoapp.musically/2022703020 (Linux; U; Android 7.1.2; en; SM-N975F; Build/N2G48H;tt-ok/{str(random.randint(1, 10**19))})'
         }
 
-# ---- MailTM class ----
+# ===== MailTM =====
 class MailTM:
     def __init__(self):
         self.url = "https://api.mail.tm"
@@ -128,7 +127,7 @@ class MailTM:
                     await asyncio.sleep(3)
             return None
 
-# ---- MobileFlowFlexible class ----
+# ===== MobileFlowFlexible =====
 class MobileFlowFlexible:
     def __init__(self, account_param: str):
         self.input = account_param.strip()
@@ -176,7 +175,7 @@ class MobileFlowFlexible:
                 params['account_param'] = acct
                 try:
                     signature = SignerPy.sign(params=params)
-                except Exception:
+                except Exception as e:
                     continue
                 headers = self.headers.copy()
                 headers.update({
@@ -191,23 +190,29 @@ class MobileFlowFlexible:
                 url = f"https://{host}/passport/account_lookup/mobile/"
                 try:
                     resp = await asyncio.to_thread(self.session.post, url, params=params, headers=headers, timeout=timeout_per_host)
-                    j = resp.json()
+                    try:
+                        j = resp.json()
+                    except ValueError:
+                        continue
                     accounts = j.get('data', {}).get('accounts', [])
-                    if accounts:
-                        first = accounts[0]
-                        ticket = first.get('passport_ticket') or first.get('not_login_ticket') or None
-                        if ticket:
-                            return ticket
-                except Exception:
+                    if not accounts:
+                        continue
+                    first = accounts[0]
+                    ticket = first.get('passport_ticket') or first.get('not_login_ticket') or None
+                    username = first.get('user_name') or first.get('username') or None
+                    if ticket:
+                        return ticket, acct
+                    if username and not ticket:
+                        return None, acct
+                except requests.RequestException:
                     continue
-        return None
+        return None, None
 
     async def send_code_using_ticket(self, passport_ticket: str, timeout_mailbox: int = 120):
         mail_client = MailTM()
         mail, token = await mail_client.gen()
         if not mail or not token:
             return None, None
-
         params = self.base_params.copy()
         ts = int(time.time())
         params['ts'] = ts
@@ -217,12 +222,10 @@ class MobileFlowFlexible:
         params['type'] = "3737"
         params.pop('fixed_mix_mode', None)
         params.pop('account_param', None)
-
         try:
             signature = SignerPy.sign(params=params)
         except Exception:
             return None, None
-
         headers = self.headers.copy()
         headers.update({
             'x-ss-req-ticket': signature.get('x-ss-req-ticket', ''),
@@ -232,12 +235,14 @@ class MobileFlowFlexible:
             'x-khronos': signature.get('x-khronos', ''),
             'x-ladon': signature.get('x-ladon', ''),
         })
-
         for host in self.net.send_hosts:
             url = f"https://{host}/passport/email/send_code"
             try:
                 resp = await asyncio.to_thread(self.session.post, url, params=params, headers=headers, timeout=10)
-                j = resp.json()
+                try:
+                    j = resp.json()
+                except ValueError:
+                    continue
                 if j.get("message") == "success" or j.get("status") == "success":
                     body = await mail_client.mailbox(token, timeout=timeout_mailbox)
                     if not body:
@@ -245,32 +250,35 @@ class MobileFlowFlexible:
                     ree = re.search(r'تم إنشاء هذا البريد الإلكتروني من أجل\s+(.+)\.', body)
                     if ree:
                         return ree.group(1).strip(), mail
-            except Exception:
+                    ree2 = re.search(r'username[:\s]+([A-Za-z0-9_\.]+)', body, re.IGNORECASE)
+                    if ree2:
+                        return ree2.group(1).strip(), mail
+                    return None, mail
+            except requests.RequestException:
                 continue
         return None, mail
 
-# ---- Flask API ----
+# ===== Flask App =====
 app = Flask(__name__)
 
-@app.route("/get_username", methods=["POST"])
+@app.route("/get_username", methods=["GET"])
 def get_username():
-    data = request.json
-    account_param = data.get("account_param")
-    if not account_param:
-        return jsonify({"error": "account_param required"}), 400
+    phone = request.args.get("phone")
+    if not phone:
+        return jsonify({"error": "phone parameter required"}), 400
 
-    async def run_flow():
-        flow = MobileFlowFlexible(account_param)
-        ticket = await flow.find_passport_ticket()
-        if not ticket:
-            return {"error": "Failed to obtain passport_ticket"}
-        username, mail_used = await flow.send_code_using_ticket(passport_ticket=ticket)
-        if not username:
-            return {"error": "Failed to extract username", "mail_used": mail_used}
-        return {"username": username, "mail_used": mail_used}
+    loop = asyncio.get_event_loop()
+    flow = MobileFlowFlexible(account_param=phone)
+    ticket, used_variant = loop.run_until_complete(flow.find_passport_ticket())
+    if not ticket:
+        return jsonify({"error": "Failed to obtain passport_ticket", "used_variant": used_variant})
 
-    result = asyncio.run(run_flow())
-    return jsonify(result)
+    username, mail_used = loop.run_until_complete(flow.send_code_using_ticket(passport_ticket=ticket))
+    if username:
+        return jsonify({"username": username, "mail_used": mail_used})
+    else:
+        return jsonify({"error": "Failed to extract username", "mail_used": mail_used})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
