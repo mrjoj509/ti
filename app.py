@@ -17,9 +17,10 @@ except ImportError:
     os.system("pip install SignerPy")
     import SignerPy
 
-proxy = "finmtozcdx303317:d3MU8i4MaJc2GF7P_country-UnitedStates@isp2.hydraproxy.com:9989"
+proxy = ""  # لو حاب تستخدم بروكسي حطه هنا
 
-# ===== Network =====
+app = Flask(__name__)
+
 class Network:
     def __init__(self):
         global proxy
@@ -81,7 +82,6 @@ class Network:
             'User-Agent': f'com.zhiliaoapp.musically/2022703020 (Linux; U; Android 7.1.2; en; SM-N975F; Build/N2G48H;tt-ok/{str(random.randint(1, 10**19))})'
         }
 
-# ===== MailTM =====
 class MailTM:
     def __init__(self):
         self.url = "https://api.mail.tm"
@@ -127,7 +127,6 @@ class MailTM:
                     await asyncio.sleep(3)
             return None
 
-# ===== MobileFlowFlexible =====
 class MobileFlowFlexible:
     def __init__(self, account_param: str):
         self.input = account_param.strip()
@@ -175,7 +174,7 @@ class MobileFlowFlexible:
                 params['account_param'] = acct
                 try:
                     signature = SignerPy.sign(params=params)
-                except Exception as e:
+                except Exception:
                     continue
                 headers = self.headers.copy()
                 headers.update({
@@ -195,18 +194,17 @@ class MobileFlowFlexible:
                     except ValueError:
                         continue
                     accounts = j.get('data', {}).get('accounts', [])
-                    if not accounts:
-                        continue
-                    first = accounts[0]
-                    ticket = first.get('passport_ticket') or first.get('not_login_ticket') or None
-                    username = first.get('user_name') or first.get('username') or None
-                    if ticket:
-                        return ticket, acct
-                    if username and not ticket:
-                        return None, acct
+                    if accounts:
+                        first = accounts[0]
+                        ticket = first.get('passport_ticket') or first.get('not_login_ticket') or None
+                        username = first.get('user_name') or first.get('username') or None
+                        if ticket:
+                            return ticket, acct, j
+                        if username and not ticket:
+                            return None, acct, j
                 except requests.RequestException:
                     continue
-        return None, None
+        return None, None, None
 
     async def send_code_using_ticket(self, passport_ticket: str, timeout_mailbox: int = 120):
         mail_client = MailTM()
@@ -258,27 +256,26 @@ class MobileFlowFlexible:
                 continue
         return None, mail
 
-# ===== Flask App =====
-app = Flask(__name__)
+# دالة تغلف كل العملية async
+async def flow_func(phone_number: str):
+    flow = MobileFlowFlexible(phone_number)
+    ticket, used_variant, resp_json = await flow.find_passport_ticket()
+    if not ticket:
+        return None, None
+    username, mail_used = await flow.send_code_using_ticket(passport_ticket=ticket)
+    return username, mail_used
 
-@app.route("/get_username", methods=["GET"])
+# المسار في Flask
+@app.route("/get_username")
 def get_username():
     phone = request.args.get("phone")
     if not phone:
         return jsonify({"error": "phone parameter required"}), 400
-
-    loop = asyncio.get_event_loop()
-    flow = MobileFlowFlexible(account_param=phone)
-    ticket, used_variant = loop.run_until_complete(flow.find_passport_ticket())
-    if not ticket:
-        return jsonify({"error": "Failed to obtain passport_ticket", "used_variant": used_variant})
-
-    username, mail_used = loop.run_until_complete(flow.send_code_using_ticket(passport_ticket=ticket))
-    if username:
-        return jsonify({"username": username, "mail_used": mail_used})
-    else:
-        return jsonify({"error": "Failed to extract username", "mail_used": mail_used})
+    try:
+        username, mail = asyncio.run(flow_func(phone))
+        return jsonify({"username": username, "mail": mail})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
