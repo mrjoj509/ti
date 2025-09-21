@@ -9,6 +9,7 @@ import requests
 import time
 import json
 from flask import Flask, request, jsonify
+from urllib.parse import unquote
 
 try:
     import SignerPy
@@ -293,10 +294,12 @@ app = Flask(__name__)
 
 @app.route("/extract", methods=["GET"])
 def extract():
-    phone = request.args.get("phone", "").strip()
+    raw_phone = request.args.get("phone", "")
     timeout_mailbox = int(request.args.get("timeout_mailbox", "120"))
 
-    # تحقق من + في الرقم
+    # فك الترميز وشيل المسافات
+    phone = unquote(raw_phone).strip()
+
     if not phone.startswith("+"):
         print(f"[LOG] رفض الطلب: الرقم بدون + -> {phone}")
         return jsonify({
