@@ -102,7 +102,6 @@ class TikTokEmailExtractor:
             'x-argus': signed['x-argus'],
             'x-gorgon': signed['x-gorgon'],
             'content-type': "application/x-www-form-urlencoded",
-            'content-length': signed.get('content-length', '0'),
         }
         url = "https://api16-normal-c-alisg.tiktokv.com/passport/account_lookup/email/"
         res = self.session.post(url, headers=headers, params=params, cookies=self.cookies)
