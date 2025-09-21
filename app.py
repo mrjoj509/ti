@@ -297,20 +297,17 @@ def extract():
     raw_phone = request.args.get("phone", "")
     timeout_mailbox = int(request.args.get("timeout_mailbox", "120"))
 
-    # نصلح الرقم مباشرة: كل +/مسافات/ترميز نبدله بـ + حقيقي
-    phone = unquote(raw_phone).replace(" ", "").replace("%2B", "+").strip()
+    # إزالة المسافات والـ URL-encoding
+    phone = unquote(raw_phone).replace(" ", "").strip()
 
+    # إضافة + تلقائيًا إذا مفقود
     if not phone.startswith("+"):
-        print(f"[LOG] رفض الطلب: الرقم بدون + -> {phone}")
-        return jsonify({
-            "status": "error",
-            "message": "الرقم لازم يبدأ بعلامة + (مثال: +9665XXXXXXXX)"
-        }), 400
+        phone = "+" + phone
 
     print(f"[LOG] استعلام جديد برقم: {phone}")
 
     flow = MobileFlowFlexible(account_param=phone)
-
+    
     async def run_flow():
         ticket, used_variant, resp_json = await flow.find_passport_ticket()
         if not ticket:
