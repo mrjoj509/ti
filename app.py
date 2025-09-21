@@ -17,9 +17,10 @@ except ImportError:
     os.system("pip install SignerPy")
     import SignerPy
 
-proxy = ""  # ضع بروكسي هنا إذا تحب
+# ---------------------- إعداد البروكسي ----------------------
+proxy = "finmtozcdx303317:d3MU8i4MaJc2GF7P_country-UnitedStates@isp2.hydraproxy.com:9989"
 
-# ===================== شبكة TikTok =====================
+# ---------------------- Network ----------------------
 class Network:
     def __init__(self):
         global proxy
@@ -81,7 +82,7 @@ class Network:
             'User-Agent': f'com.zhiliaoapp.musically/2022703020 (Linux; U; Android 7.1.2; en; SM-N975F; Build/N2G48H;tt-ok/{str(random.randint(1, 10**19))})'
         }
 
-# ===================== ايميل وهمي =====================
+# ---------------------- MailTM ----------------------
 class MailTM:
     def __init__(self):
         self.url = "https://api.mail.tm"
@@ -108,7 +109,26 @@ class MailTM:
                 print("mail.tm gen error:", e)
                 return None, None
 
-# ===================== استعلام TikTok =====================
+    async def mailbox(self, token: str, timeout: int = 120):
+        async with aiohttp.ClientSession(headers={**self.headers, "Authorization": f"Bearer {token}"}) as session:
+            total = 0
+            while total < timeout:
+                await asyncio.sleep(3)
+                total += 3
+                try:
+                    async with session.get(f"{self.url}/messages") as resp:
+                        inbox = await resp.json()
+                        messages = inbox.get("hydra:member", [])
+                        if messages:
+                            id = messages[0]["id"]
+                            async with session.get(f"{self.url}/messages/{id}") as r:
+                                msg = await r.json()
+                                return msg.get("text", "")
+                except Exception as e:
+                    await asyncio.sleep(3)
+            return None
+
+# ---------------------- MobileFlowFlexible ----------------------
 class MobileFlowFlexible:
     def __init__(self, account_param: str):
         self.input = account_param.strip()
@@ -145,7 +165,7 @@ class MobileFlowFlexible:
                 out.append(item)
         return out
 
-    async def find_username(self):
+    async def find_username(self, timeout_per_host: int = 10):
         variants = self._variants()
         for acct in variants:
             for host in self.net.hosts:
@@ -156,10 +176,12 @@ class MobileFlowFlexible:
                 params['account_param'] = acct
                 try:
                     signature = SignerPy.sign(params=params)
-                except Exception:
+                except Exception as e:
                     continue
+
                 headers = self.headers.copy()
                 headers.update({
+                    'x-tt-passport-csrf-token': secrets.token_hex(16),
                     'x-ss-req-ticket': signature.get('x-ss-req-ticket', ''),
                     'x-ss-stub': signature.get('x-ss-stub', ''),
                     'x-argus': signature.get('x-argus', ''),
@@ -167,13 +189,15 @@ class MobileFlowFlexible:
                     'x-khronos': signature.get('x-khronos', ''),
                     'x-ladon': signature.get('x-ladon', ''),
                 })
+
                 url = f"https://{host}/passport/account_lookup/mobile/"
                 try:
-                    resp = await asyncio.to_thread(self.session.post, url, params=params, headers=headers, timeout=10)
+                    resp = await asyncio.to_thread(self.session.post, url, params=params, headers=headers, timeout=timeout_per_host)
                     try:
                         j = resp.json()
                     except ValueError:
                         continue
+
                     accounts = j.get('data', {}).get('accounts', [])
                     if accounts:
                         first = accounts[0]
@@ -184,25 +208,26 @@ class MobileFlowFlexible:
                     continue
         return None
 
-# ===================== Flask =====================
+# ---------------------- Flask App ----------------------
 app = Flask(__name__)
 
-@app.route("/lookup", methods=["GET"])
-def lookup():
-    account_param = request.args.get("phone")
-    if not account_param:
+@app.route("/get_username", methods=["GET"])
+def get_username():
+    phone = request.args.get("phone")
+    if not phone:
         return jsonify({"error": "phone parameter required"}), 400
 
-    flow = MobileFlowFlexible(account_param)
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    username = loop.run_until_complete(flow.find_username())
-    loop.close()
+    async def fetch():
+        flow = MobileFlowFlexible(account_param=phone)
+        username = await flow.find_username()
+        return username
 
+    username = asyncio.run(fetch())
     if username:
         return jsonify({"username": username})
     else:
-        return jsonify({"username": None, "message": "Not found"})
+        return jsonify({"error": "username not found"}), 404
 
+# ---------------------- Main ----------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
