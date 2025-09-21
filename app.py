@@ -186,5 +186,7 @@ def email_to_user_api():
     user_info = extractor.fetch_user_info(username, email)
     return jsonify(user_info)
 
+
 if __name__ == "__main__":
-    app.run()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
