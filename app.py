@@ -17,8 +17,9 @@ except ImportError:
     os.system("pip install SignerPy")
     import SignerPy
 
-proxy = "finmtozcdx303317:d3MU8i4MaJc2GF7P_country-UnitedStates@isp2.hydraproxy.com:9989"
+proxy = ""  # ضع بروكسي هنا إذا تحب
 
+# ===================== شبكة TikTok =====================
 class Network:
     def __init__(self):
         global proxy
@@ -80,6 +81,34 @@ class Network:
             'User-Agent': f'com.zhiliaoapp.musically/2022703020 (Linux; U; Android 7.1.2; en; SM-N975F; Build/N2G48H;tt-ok/{str(random.randint(1, 10**19))})'
         }
 
+# ===================== ايميل وهمي =====================
+class MailTM:
+    def __init__(self):
+        self.url = "https://api.mail.tm"
+        self.headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        }
+
+    async def gen(self):
+        async with aiohttp.ClientSession(headers=self.headers) as session:
+            try:
+                async with session.get(f"{self.url}/domains") as resp:
+                    data = await resp.json()
+                    domain = data["hydra:member"][0]["domain"]
+                local = ''.join(random.choice("abcdefghijklmnopqrstuvwxyz") for _ in range(12))
+                mail = f"{local}@{domain}"
+                payload = {"address": mail, "password": local}
+                async with session.post(f"{self.url}/accounts", json=payload) as resp:
+                    await resp.json()
+                async with session.post(f"{self.url}/token", json=payload) as resp:
+                    token = await resp.json()
+                    return mail, token.get("token")
+            except Exception as e:
+                print("mail.tm gen error:", e)
+                return None, None
+
+# ===================== استعلام TikTok =====================
 class MobileFlowFlexible:
     def __init__(self, account_param: str):
         self.input = account_param.strip()
@@ -116,7 +145,7 @@ class MobileFlowFlexible:
                 out.append(item)
         return out
 
-    async def find_passport_ticket(self, timeout_per_host: int = 10):
+    async def find_username(self):
         variants = self._variants()
         for acct in variants:
             for host in self.net.hosts:
@@ -127,11 +156,10 @@ class MobileFlowFlexible:
                 params['account_param'] = acct
                 try:
                     signature = SignerPy.sign(params=params)
-                except Exception as e:
+                except Exception:
                     continue
                 headers = self.headers.copy()
                 headers.update({
-                    'x-tt-passport-csrf-token': secrets.token_hex(16),
                     'x-ss-req-ticket': signature.get('x-ss-req-ticket', ''),
                     'x-ss-stub': signature.get('x-ss-stub', ''),
                     'x-argus': signature.get('x-argus', ''),
@@ -141,7 +169,7 @@ class MobileFlowFlexible:
                 })
                 url = f"https://{host}/passport/account_lookup/mobile/"
                 try:
-                    resp = await asyncio.to_thread(self.session.post, url, params=params, headers=headers, timeout=timeout_per_host)
+                    resp = await asyncio.to_thread(self.session.post, url, params=params, headers=headers, timeout=10)
                     try:
                         j = resp.json()
                     except ValueError:
@@ -152,11 +180,11 @@ class MobileFlowFlexible:
                         username = first.get('user_name') or first.get('username') or None
                         if username:
                             return username
-                except requests.RequestException as e:
+                except requests.RequestException:
                     continue
         return None
 
-# ================= Flask App =================
+# ===================== Flask =====================
 app = Flask(__name__)
 
 @app.route("/lookup", methods=["GET"])
@@ -164,15 +192,17 @@ def lookup():
     account_param = request.args.get("phone")
     if not account_param:
         return jsonify({"error": "phone parameter required"}), 400
-    try:
-        username = asyncio.run(MobileFlowFlexible(account_param).find_passport_ticket())
-        if username:
-            return jsonify({"username": username})
-        else:
-            return jsonify({"username": None, "message": "Not found"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+
+    flow = MobileFlowFlexible(account_param)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    username = loop.run_until_complete(flow.find_username())
+    loop.close()
+
+    if username:
+        return jsonify({"username": username})
+    else:
+        return jsonify({"username": None, "message": "Not found"})
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=5000)
