@@ -1,3 +1,4 @@
+import os
 from flask import Flask, request, jsonify
 import requests
 import SignerPy
@@ -6,7 +7,6 @@ import secrets
 import uuid
 import datetime
 import binascii
-import os
 import time
 import random
 import re
@@ -102,6 +102,7 @@ class TikTokEmailExtractor:
             'x-argus': signed['x-argus'],
             'x-gorgon': signed['x-gorgon'],
             'content-type': "application/x-www-form-urlencoded",
+            'content-length': signed['content-length'],
         }
         url = "https://api16-normal-c-alisg.tiktokv.com/passport/account_lookup/email/"
         res = self.session.post(url, headers=headers, params=params, cookies=self.cookies)
@@ -165,7 +166,7 @@ class TikTokEmailExtractor:
                 "nickname": nickname,
                 "followers": followers,
                 "likes": likes,
-                "created_date": Date
+                "year": Date
             }
         except Exception:
             return {"error": "Failed to fetch user info"}
@@ -173,9 +174,6 @@ class TikTokEmailExtractor:
 @app.route("/email-to-user", methods=["GET"])
 def email_to_user_api():
     email = request.args.get("email")
-    if not email:
-        return jsonify({"error": "missing email"}), 400
-
     extractor = TikTokEmailExtractor()
     extractor.get_temp_email()
     params = extractor.generate_params(email)
@@ -184,7 +182,6 @@ def email_to_user_api():
     username = extractor.wait_for_email()
     user_info = extractor.fetch_user_info(username, email)
     return jsonify(user_info)
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
