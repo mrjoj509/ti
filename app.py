@@ -42,6 +42,7 @@ class Network:
         ]
 
         self.send_hosts = [
+            "api16-normal-useast5.tiktokv.us",
             "api22-normal-c-alisg.tiktokv.com",
             "api31-normal-alisg.tiktokv.com",
             "api22-normal-probe-useast2a.tiktokv.com",
