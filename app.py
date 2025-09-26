@@ -24,7 +24,7 @@ except ImportError:
 class Network:
     def __init__(self):
         # البروكسي
-        self.proxy = "http://finmtozcdx303317:d3MU8i4MaJc2GF7P_country-UnitedStates@isp2.hydraproxy.com:9989"
+        self.proxy = "proxy.infiniteproxies.com:1111:infproxy_checkemail509:IgtVZEgqhJVSPQDz3YSv"
 
         self.hosts = [
             "api31-normal-useast2a.tiktokv.com",
